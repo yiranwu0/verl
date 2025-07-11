@@ -27,7 +27,7 @@ import numpy as np
 import ray
 import torch
 from torch.utils.data import Dataset, Sampler
-from tqdm import tqdm
+from ray.experimental.tqdm_ray import tqdm
 
 from verl import DataProto
 from verl.single_controller.ray import RayWorkerGroup

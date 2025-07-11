@@ -29,7 +29,7 @@ from codetiming import Timer
 from omegaconf import OmegaConf, open_dict
 from torch.utils.data import Dataset, Sampler
 from torchdata.stateful_dataloader import StatefulDataLoader
-from tqdm import tqdm
+from ray.experimental.tqdm_ray import tqdm
 
 from recipe.spin import core_algos
 from verl import DataProto

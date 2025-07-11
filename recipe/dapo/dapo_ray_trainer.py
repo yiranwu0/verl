@@ -23,7 +23,7 @@ from pprint import pprint
 
 import numpy as np
 import torch
-from tqdm import tqdm
+from ray.experimental.tqdm_ray import tqdm
 
 from verl import DataProto
 from verl.trainer.ppo.core_algos import agg_loss

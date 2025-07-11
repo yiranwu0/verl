@@ -23,7 +23,7 @@ import hydra
 import numpy as np
 import pandas as pd
 import ray
-from tqdm import tqdm
+from ray.experimental.tqdm_ray import tqdm
 
 from verl.utils.fs import copy_to_local
 

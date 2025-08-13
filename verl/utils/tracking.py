@@ -35,7 +35,7 @@ class Tracking:
 
     supported_backend = ["wandb", "mlflow", "swanlab", "vemlp_wandb", "tensorboard", "console", "clearml"]
 
-    def __init__(self, project_name, experiment_name, default_backend: Union[str, List[str]] = "console", config=None):
+    def __init__(self, project_name, experiment_name, default_backend: Union[str, List[str]] = "console", config=None, wandb_resume_id=None):
         if isinstance(default_backend, str):
             default_backend = [default_backend]
         for backend in default_backend:
@@ -50,8 +50,11 @@ class Tracking:
 
         if "tracking" in default_backend or "wandb" in default_backend:
             import wandb
-
-            wandb.init(project=project_name, name=experiment_name, config=config)
+            if wandb_resume_id is not None:
+                # Resume from a specific run ID
+                wandb.init(project=project_name, name=experiment_name, id=wandb_resume_id, resume="must")
+            else:
+                wandb.init(project=project_name, name=experiment_name, config=config)
             self.logger["wandb"] = wandb
 
         if "mlflow" in default_backend:

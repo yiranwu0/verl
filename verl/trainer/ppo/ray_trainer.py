@@ -875,7 +875,7 @@ class RayPPOTrainer:
                 worker_group=self.actor_rollout_wg if self.hybrid_engine else self.rollout_wg,
             )
 
-    def _save_checkpoint(self):
+    def _save_checkpoint(self, prev_state_dict=None):
         # path: given_path + `/global_step_{global_steps}` + `/actor`
         local_global_step_folder = os.path.join(self.config.trainer.default_local_dir,
                                                 f'global_step_{self.global_steps}')
@@ -908,7 +908,10 @@ class RayPPOTrainer:
 
         # save dataloader
         dataloader_local_path = os.path.join(local_global_step_folder, "data.pt")
-        dataloader_state_dict = self.train_dataloader.state_dict()
+        if prev_state_dict is not None:
+            dataloader_state_dict = prev_state_dict
+        else:
+            dataloader_state_dict = self.train_dataloader.state_dict()
         torch.save(dataloader_state_dict, dataloader_local_path)
 
         # latest checkpointed iteration tracker (for atomic usage)

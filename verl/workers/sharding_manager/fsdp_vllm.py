@@ -49,7 +49,8 @@ from verl.utils.vllm_utils import TensorLoRARequest, VLLMHijack, is_version_ge, 
 from .base import BaseShardingManager
 
 logger = logging.getLogger(__file__)
-logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
+# Use INFO level to ensure memory debug logs are visible
+logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "INFO"))
 
 
 
@@ -194,6 +195,18 @@ class FSDPVLLMShardingManager(BaseShardingManager):
             log_gpu_memory_usage("After sync model weights in sharding manager", logger=logger)
             del params
         else:
+            # More aggressive memory cleanup before wake_up for vLLM V1
+            import gc
+            gc.collect()
+            get_torch_device().empty_cache()
+            get_torch_device().synchronize()
+            
+            # Distributed memory synchronization to ensure all GPUs are ready
+            if self.device_mesh is not None and hasattr(torch.distributed, 'is_initialized') and torch.distributed.is_initialized():
+                torch.distributed.barrier()
+            
+            log_gpu_memory_usage("Before vLLM wake_up in sharding manager", logger=logger)
+            
             if "tags" in inspect.signature(self.inference_engine.wake_up).parameters:
                 self.inference_engine.wake_up(tags=["weights"])
             else:
@@ -205,7 +218,15 @@ class FSDPVLLMShardingManager(BaseShardingManager):
             del params
             if self.offload_param:
                 offload_fsdp_model_to_cpu(self.module)
+            
+            # Additional cleanup before KV cache wake_up
+            gc.collect()
             get_torch_device().empty_cache()
+            get_torch_device().synchronize()
+            
+            # Another distributed barrier before KV cache allocation
+            if self.device_mesh is not None and hasattr(torch.distributed, 'is_initialized') and torch.distributed.is_initialized():
+                torch.distributed.barrier()
 
             if "tags" in inspect.signature(self.inference_engine.wake_up).parameters:
                 self.inference_engine.wake_up(tags=["kv_cache"])
@@ -219,6 +240,10 @@ class FSDPVLLMShardingManager(BaseShardingManager):
 
     @GPUMemoryLogger(role="fsdp vllm sharding_manager", logger=logger)
     def __exit__(self, exc_type, exc_value, traceback):
+        # Log memory before cleanup
+        print("MEMORY_DEBUG: Before vLLM sleep in sharding manager exit")
+        log_gpu_memory_usage("Before vLLM sleep in sharding manager exit", logger=logger, level=logging.INFO)
+        
         # TODO(ZSL): check this
         if vllm_version in (
             "0.5.4",
@@ -227,11 +252,32 @@ class FSDPVLLMShardingManager(BaseShardingManager):
             self.inference_engine.offload_model_weights()
         else:
             self.inference_engine.sleep(level=1)
-
+        
+        # Aggressive memory cleanup to handle vLLM V1 CuMemAllocator
+        print("MEMORY_DEBUG: After vLLM sleep in sharding manager exit")
+        log_gpu_memory_usage("After vLLM sleep in sharding manager exit", logger=logger, level=logging.INFO)
+        
         self.module.train()
 
-        # add empty cache after each compute
+        # More targeted memory cleanup with garbage collection
+        import gc
+        gc.collect()
         get_torch_device().empty_cache()
+        
+        # Additional cleanup for FSDP memory if needed
+        if self.offload_param:
+            from verl.utils.fsdp_utils import offload_fsdp_model_to_cpu
+            offload_fsdp_model_to_cpu(self.module, empty_cache=True)
+        
+        # Final aggressive memory cleanup for vLLM V1
+        gc.collect()
+        get_torch_device().empty_cache()
+        
+        # Additional synchronization to ensure all GPU operations complete
+        get_torch_device().synchronize()
+        
+        print("MEMORY_DEBUG: After aggressive memory cleanup in sharding manager exit")
+        log_gpu_memory_usage("After aggressive memory cleanup in sharding manager exit", logger=logger, level=logging.INFO)
 
         # restore random states
         if self.device_mesh is not None:

@@ -81,7 +81,8 @@ import json
 
 
 logger = logging.getLogger(__file__)
-logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
+# Use INFO level to ensure memory debug logs are visible
+logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "INFO"))
 
 device_name = get_device_name()
 
@@ -692,6 +693,14 @@ class ActorRolloutRefWorker(Worker):
             offload_fsdp_optimizer(optimizer=self.actor_optimizer)
             log_gpu_memory_usage("After offload actor optimizer during update_actor", logger=logger)
 
+        # More aggressive memory cleanup for distributed training
+        import gc
+        gc.collect()
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        
+        log_gpu_memory_usage('After aggressive memory cleanup in update_actor', logger=logger)
+
         return output
 
 
@@ -735,7 +744,15 @@ class ActorRolloutRefWorker(Worker):
             offload_fsdp_model_to_cpu(self.actor_module_fsdp)
         if self._is_offload_optimizer:
             offload_fsdp_optimizer(optimizer=self.actor_optimizer)
+        
+        # More aggressive memory cleanup for distributed training
+        import gc
+        gc.collect()
         torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        
+        log_gpu_memory_usage('After aggressive memory cleanup in update_actor_mini_batch', logger=logger)
+        
         return output
 
 
@@ -780,7 +797,15 @@ class ActorRolloutRefWorker(Worker):
             offload_fsdp_model_to_cpu(self.actor_module_fsdp)
         if self._is_offload_optimizer:
             offload_fsdp_optimizer(optimizer=self.actor_optimizer)
+        
+        # More aggressive memory cleanup for distributed training
+        import gc
+        gc.collect()
         torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        
+        log_gpu_memory_usage('After aggressive memory cleanup in update_actor_micro_batch', logger=logger)
+        
         return output
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)

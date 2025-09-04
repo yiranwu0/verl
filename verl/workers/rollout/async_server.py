@@ -381,7 +381,23 @@ class AsyncLLMServerManager:
 
     def wake_up(self):
         """Wake up all vllm instances."""
-        ray.get([server.wake_up.remote() for server in self.async_llm_servers])
+        # Add simple error handling for wake_up
+        try:
+            ray.get([server.wake_up.remote() for server in self.async_llm_servers])
+        except Exception as e:
+            if "out of memory" in str(e).lower() or "oom" in str(e).lower():
+                print(f"Wake up failed due to OOM, trying sleep and retry once: {e}")
+                try:
+                    # Try to clean up and retry once
+                    ray.get([server.sleep.remote() for server in self.async_llm_servers])
+                    import time
+                    time.sleep(1)  # Brief pause for cleanup
+                    ray.get([server.wake_up.remote() for server in self.async_llm_servers])
+                except Exception as retry_e:
+                    print(f"Retry also failed: {retry_e}")
+                    raise e  # Re-raise original error
+            else:
+                raise e
 
     def sleep(self):
         """Sleep all vllm instances."""

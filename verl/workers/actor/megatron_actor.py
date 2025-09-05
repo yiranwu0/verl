@@ -239,8 +239,11 @@ class MegatronPPOActor(BasePPOActor):
                         async_op=False,
                     )
 
-        # add empty cache after each compute
+        # More aggressive memory cleanup for compute_log_prob 
+        import gc
+        gc.collect()
         torch.cuda.empty_cache()
+        torch.cuda.synchronize()
 
         return log_probs, entropys
 

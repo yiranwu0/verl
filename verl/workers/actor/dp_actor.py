@@ -312,6 +312,11 @@ class DataParallelPPOActor(BasePPOActor):
             revert_indices = torch.tensor(get_reverse_idx(indices), dtype=torch.long)
             log_probs = log_probs[revert_indices]
 
+        # Memory cleanup for compute_log_prob (large logits can consume significant memory)
+        import gc
+        gc.collect()
+        get_torch_device().empty_cache()
+        
         return log_probs, entropys
 
     @GPUMemoryLogger(role="dp actor", logger=logger)

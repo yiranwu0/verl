@@ -883,7 +883,16 @@ class ActorRolloutRefWorker(Worker):
 
         if self._is_offload_param:
             offload_fsdp_model_to_cpu(self.actor_module_fsdp)
-            log_gpu_memory_usage("After offload actor model during compute_log_prob", logger=logger)
+            log_gpu_memory_usage("After offload actor model during compute_log_prob", logger=logger, level=logging.INFO)
+
+        # More aggressive memory cleanup for compute_log_prob (can be memory intensive)
+        import gc
+        gc.collect()
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        
+        print("MEMORY_DEBUG: After aggressive memory cleanup in compute_log_prob")
+        log_gpu_memory_usage('After aggressive memory cleanup in compute_log_prob', logger=logger, level=logging.INFO)
 
         return output
 
@@ -946,6 +955,15 @@ class ActorRolloutRefWorker(Worker):
         # unshard the root FSDP module
         if self.world_size > 1 and fsdp_version(self.ref_policy.actor_module) == 1:
             self.ref_policy.actor_module._handle.reshard(True)
+
+        # More aggressive memory cleanup for compute_ref_log_prob (can be memory intensive)
+        import gc
+        gc.collect()
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        
+        print("MEMORY_DEBUG: After aggressive memory cleanup in compute_ref_log_prob")
+        log_gpu_memory_usage('After aggressive memory cleanup in compute_ref_log_prob', logger=logger, level=logging.INFO)
 
         return output
 

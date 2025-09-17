@@ -209,37 +209,17 @@ class FSDPVLLMShardingManager(BaseShardingManager):
             log_gpu_memory_usage("Before vLLM wake_up in sharding manager", logger=logger, level=logging.INFO)
             
             # Robust wake_up with retry for weights
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    if "tags" in inspect.signature(self.inference_engine.wake_up).parameters:
-                        self.inference_engine.wake_up(tags=["weights"])
-                    else:
-                        self.inference_engine.wake_up()
-                    break
-                except RuntimeError as e:
-                    if "out of memory" in str(e).lower() and attempt < max_retries - 1:
-                        print(f"MEMORY_DEBUG: Wake_up weights failed (attempt {attempt + 1}), trying more aggressive cleanup...")
-                        # More aggressive cleanup
-                        import gc
-                        gc.collect()
-                        get_torch_device().empty_cache()
-                        get_torch_device().synchronize()
-                        
-                        # Wait a bit for memory to be freed
-                        import time
-                        time.sleep(2)
-                        continue
-                    else:
-                        print(f"MEMORY_DEBUG: Wake_up weights failed after {max_retries} attempts: {e}")
-                        raise
+            if "tags" in inspect.signature(self.inference_engine.wake_up).parameters:
+                self.inference_engine.wake_up(tags=["weights"])
+            else:
+                self.inference_engine.wake_up()
 
             # update model params
             self.update_params(params, peft_config=peft_config)
             log_gpu_memory_usage("After sync model weights in sharding manager", logger=logger)
             del params
             if self.offload_param:
-                offload_fsdp_model_to_cpu(self.module)
+                offload_fsdp_model_to_cpu(self.module, empty_cache=True)
             
             # Additional cleanup before KV cache wake_up
             gc.collect()
@@ -251,27 +231,8 @@ class FSDPVLLMShardingManager(BaseShardingManager):
                 torch.distributed.barrier()
 
             # Robust wake_up with retry for KV cache
-            for attempt in range(max_retries):
-                try:
-                    if "tags" in inspect.signature(self.inference_engine.wake_up).parameters:
-                        self.inference_engine.wake_up(tags=["kv_cache"])
-                    break
-                except RuntimeError as e:
-                    if "out of memory" in str(e).lower() and attempt < max_retries - 1:
-                        print(f"MEMORY_DEBUG: Wake_up kv_cache failed (attempt {attempt + 1}), trying more aggressive cleanup...")
-                        # More aggressive cleanup
-                        import gc
-                        gc.collect()
-                        get_torch_device().empty_cache()
-                        get_torch_device().synchronize()
-                        
-                        # Wait a bit for memory to be freed
-                        import time
-                        time.sleep(3)
-                        continue
-                    else:
-                        print(f"MEMORY_DEBUG: Wake_up kv_cache failed after {max_retries} attempts: {e}")
-                        raise
+            if "tags" in inspect.signature(self.inference_engine.wake_up).parameters:
+                self.inference_engine.wake_up(tags=["kv_cache"])
 
         log_gpu_memory_usage("After del state_dict and empty_cache in sharding manager", logger=logger)
 

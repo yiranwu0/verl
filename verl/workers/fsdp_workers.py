@@ -882,17 +882,52 @@ class ActorRolloutRefWorker(Worker):
             self.actor.actor_module._handle.reshard(True)
 
         if self._is_offload_param:
-            offload_fsdp_model_to_cpu(self.actor_module_fsdp)
+            offload_fsdp_model_to_cpu(self.actor_module_fsdp, empty_cache=True)
             log_gpu_memory_usage("After offload actor model during compute_log_prob", logger=logger, level=logging.INFO)
 
         # More aggressive memory cleanup for compute_log_prob (can be memory intensive)
         import gc
+        # # Explicitly drop large references before collecting
+        # try:
+        #     del data
+        # except Exception:
+        #     pass
+        # try:
+        #     del entropys
+        # except Exception:
+        #     pass
+
+        # Ensure all CUDA work is finished before freeing
+        torch.cuda.synchronize()
+        # Collect any stale CUDA IPC allocations (can retain device memory across processes)
+        if hasattr(torch.cuda, "ipc_collect"):
+            try:
+                torch.cuda.ipc_collect()
+            except Exception:
+                pass
+
+        # Run Python GC then release cached blocks back to the CUDA driver
         gc.collect()
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
         
         print("MEMORY_DEBUG: After aggressive memory cleanup in compute_log_prob")
         log_gpu_memory_usage('After aggressive memory cleanup in compute_log_prob', logger=logger, level=logging.INFO)
+
+        # Print per-GPU memory summary for diagnostics
+        try:
+            num_gpus = torch.cuda.device_count()
+            header = "MEMORY_DEBUG: Per-GPU memory after compute_log_prob cleanup"
+            print(header)
+            for i in range(num_gpus):
+                allocated = torch.cuda.memory_allocated(i) / (1024 ** 3)
+                reserved = torch.cuda.memory_reserved(i) / (1024 ** 3)
+                free_b, total_b = torch.cuda.mem_get_info(i)
+                used = (total_b - free_b) / (1024 ** 3)
+                total = total_b / (1024 ** 3)
+                print(f"GPU {i}: allocated={allocated:.2f} GB, reserved={reserved:.2f} GB, device used/total={used:.2f}/{total:.2f} GB")
+        except Exception as _e:
+            print(f"MEMORY_DEBUG: Failed to print per-GPU memory: {_e}")
 
         return output
 

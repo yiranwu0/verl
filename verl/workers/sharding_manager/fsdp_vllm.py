@@ -279,8 +279,8 @@ class FSDPVLLMShardingManager(BaseShardingManager):
         # Additional synchronization to ensure all GPU operations complete
         get_torch_device().synchronize()
         
-        print("MEMORY_DEBUG: After aggressive memory cleanup in sharding manager exit")
-        log_gpu_memory_usage("After aggressive memory cleanup in sharding manager exit", logger=logger, level=logging.INFO)
+        # print("MEMORY_DEBUG: After aggressive memory cleanup in sharding manager exit")
+        # log_gpu_memory_usage("After aggressive memory cleanup in sharding manager exit", logger=logger, level=logging.INFO)
 
         # restore random states
         if self.device_mesh is not None:

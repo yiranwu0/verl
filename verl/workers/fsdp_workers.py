@@ -688,10 +688,10 @@ class ActorRolloutRefWorker(Worker):
 
         if self._is_offload_param:
             offload_fsdp_model_to_cpu(self.actor_module_fsdp)
-            log_gpu_memory_usage("After offload actor model during update_actor", logger=logger)
+            # log_gpu_memory_usage("After offload actor model during update_actor", logger=logger)
         if self._is_offload_optimizer:
             offload_fsdp_optimizer(optimizer=self.actor_optimizer)
-            log_gpu_memory_usage("After offload actor optimizer during update_actor", logger=logger)
+            # log_gpu_memory_usage("After offload actor optimizer during update_actor", logger=logger)
 
         # More aggressive memory cleanup for distributed training
         import gc
@@ -699,7 +699,7 @@ class ActorRolloutRefWorker(Worker):
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
         
-        log_gpu_memory_usage('After aggressive memory cleanup in update_actor', logger=logger)
+        # log_gpu_memory_usage('After aggressive memory cleanup in update_actor', logger=logger)
 
         return output
 
@@ -715,7 +715,7 @@ class ActorRolloutRefWorker(Worker):
             load_fsdp_optimizer(optimizer=self.actor_optimizer, device_id=torch.cuda.current_device())
 
         data.batch = data.batch.cuda()
-        log_gpu_memory_usage('Before update policy', logger=logger)
+        # log_gpu_memory_usage('Before update policy', logger=logger)
 
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data=data)
@@ -732,7 +732,7 @@ class ActorRolloutRefWorker(Worker):
             lr = self.actor_lr_scheduler.get_last_lr()[0]
             metrics['actor/lr'] = lr
 
-            log_gpu_memory_usage('After update policy', logger=logger)
+            # log_gpu_memory_usage('After update policy', logger=logger)
 
             # TODO: here, we should return all metrics
             output = DataProto(meta_info={'metrics': metrics})
@@ -751,7 +751,7 @@ class ActorRolloutRefWorker(Worker):
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
         
-        log_gpu_memory_usage('After aggressive memory cleanup in update_actor_mini_batch', logger=logger)
+        # log_gpu_memory_usage('After aggressive memory cleanup in update_actor_mini_batch', logger=logger)
         
         return output
 
@@ -804,7 +804,7 @@ class ActorRolloutRefWorker(Worker):
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
         
-        log_gpu_memory_usage('After aggressive memory cleanup in update_actor_micro_batch', logger=logger)
+        # log_gpu_memory_usage('After aggressive memory cleanup in update_actor_micro_batch', logger=logger)
         
         return output
 
@@ -911,8 +911,8 @@ class ActorRolloutRefWorker(Worker):
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
         
-        print("MEMORY_DEBUG: After aggressive memory cleanup in compute_log_prob")
-        log_gpu_memory_usage('After aggressive memory cleanup in compute_log_prob', logger=logger, level=logging.INFO)
+        # print("MEMORY_DEBUG: After aggressive memory cleanup in compute_log_prob")
+        # log_gpu_memory_usage('After aggressive memory cleanup in compute_log_prob', logger=logger, level=logging.INFO)
 
         # Print per-GPU memory summary for diagnostics
         try:
@@ -997,8 +997,8 @@ class ActorRolloutRefWorker(Worker):
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
         
-        print("MEMORY_DEBUG: After aggressive memory cleanup in compute_ref_log_prob")
-        log_gpu_memory_usage('After aggressive memory cleanup in compute_ref_log_prob', logger=logger, level=logging.INFO)
+        # print("MEMORY_DEBUG: After aggressive memory cleanup in compute_ref_log_prob")
+        # log_gpu_memory_usage('After aggressive memory cleanup in compute_ref_log_prob', logger=logger, level=logging.INFO)
 
         return output
 

@@ -915,19 +915,19 @@ class ActorRolloutRefWorker(Worker):
         # log_gpu_memory_usage('After aggressive memory cleanup in compute_log_prob', logger=logger, level=logging.INFO)
 
         # Print per-GPU memory summary for diagnostics
-        try:
-            num_gpus = torch.cuda.device_count()
-            header = "MEMORY_DEBUG: Per-GPU memory after compute_log_prob cleanup"
-            print(header)
-            for i in range(num_gpus):
-                allocated = torch.cuda.memory_allocated(i) / (1024 ** 3)
-                reserved = torch.cuda.memory_reserved(i) / (1024 ** 3)
-                free_b, total_b = torch.cuda.mem_get_info(i)
-                used = (total_b - free_b) / (1024 ** 3)
-                total = total_b / (1024 ** 3)
-                print(f"GPU {i}: allocated={allocated:.2f} GB, reserved={reserved:.2f} GB, device used/total={used:.2f}/{total:.2f} GB")
-        except Exception as _e:
-            print(f"MEMORY_DEBUG: Failed to print per-GPU memory: {_e}")
+        # try:
+        #     num_gpus = torch.cuda.device_count()
+        #     header = "MEMORY_DEBUG: Per-GPU memory after compute_log_prob cleanup"
+        #     print(header)
+        #     for i in range(num_gpus):
+        #         allocated = torch.cuda.memory_allocated(i) / (1024 ** 3)
+        #         reserved = torch.cuda.memory_reserved(i) / (1024 ** 3)
+        #         free_b, total_b = torch.cuda.mem_get_info(i)
+        #         used = (total_b - free_b) / (1024 ** 3)
+        #         total = total_b / (1024 ** 3)
+        #         print(f"GPU {i}: allocated={allocated:.2f} GB, reserved={reserved:.2f} GB, device used/total={used:.2f}/{total:.2f} GB")
+        # except Exception as _e:
+        #     print(f"MEMORY_DEBUG: Failed to print per-GPU memory: {_e}")
 
         return output
 

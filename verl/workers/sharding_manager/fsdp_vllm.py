@@ -254,7 +254,12 @@ class FSDPVLLMShardingManager(BaseShardingManager):
         ):
             self.inference_engine.offload_model_weights()
         else:
-            self.inference_engine.sleep(level=1)
+            # CRITICAL FIX: Abort all running requests before sleep to prevent CUDA illegal memory access
+            # The issue is that running requests are still executing model.forward() and accessing
+            # KV cache memory when sleep() calls CuMemAllocator.unmap_and_release() to free GPU memory.
+            # By aborting all requests first, we ensure no requests are actively using the KV cache.
+            self._abort_all_requests_before_sleep()
+            self.inference_engine.sleep(level=2)
         
         # Aggressive memory cleanup to handle vLLM V1 CuMemAllocator
         print("MEMORY_DEBUG: After vLLM sleep in sharding manager exit")
@@ -286,6 +291,72 @@ class FSDPVLLMShardingManager(BaseShardingManager):
         if self.device_mesh is not None:
             self.gen_random_states = get_torch_device().get_rng_state()
             get_torch_device().set_rng_state(self.torch_random_states)
+
+    def _abort_all_requests_before_sleep(self):
+        """
+        Abort all running and waiting requests before vLLM sleep.
+        
+        This is critical for vLLM V1 engine because:
+        1. Running requests are actively executing model.forward() and accessing KV cache memory
+        2. When sleep() calls CuMemAllocator.unmap_and_release(), it frees GPU memory
+        3. If requests are still running, they get CUDA illegal memory access
+        
+        We need to abort via the scheduler, which will:
+        1. Remove requests from running/waiting lists
+        2. Free their KV cache blocks (decrement ref_cnt)
+        3. Allow reset_prefix_cache() to succeed in block_pool
+        """
+        try:
+            # Try to access the V1 scheduler
+            engine = self.inference_engine
+            scheduler = None
+            
+            # For vLLM 0.9.x V1 engine, access the engine core's scheduler
+            if hasattr(engine, 'llm_engine'):
+                llm_engine = engine.llm_engine
+                # V1 LLMEngine has engine_core
+                if hasattr(llm_engine, 'engine_core'):
+                    engine_core = llm_engine.engine_core
+                    if hasattr(engine_core, 'scheduler'):
+                        scheduler = engine_core.scheduler
+                # Also try _engine_core for some V1 variants
+                elif hasattr(llm_engine, '_engine_core'):
+                    engine_core = llm_engine._engine_core
+                    if hasattr(engine_core, 'scheduler'):
+                        scheduler = engine_core.scheduler
+            
+            if scheduler is None:
+                logger.warning("Could not find V1 scheduler, proceeding with sleep without abort")
+                return
+                
+            # Get all request IDs
+            request_ids = list(scheduler.requests.keys())
+            
+            if request_ids:
+                logger.info(f"Aborting {len(request_ids)} requests before sleep: running={len(scheduler.running)}, waiting={len(scheduler.waiting)}")
+                
+                # Import RequestStatus for abort
+                try:
+                    from vllm.v1.request import RequestStatus
+                    scheduler.finish_requests(request_ids, RequestStatus.FINISHED_ABORTED)
+                    logger.info(f"Successfully aborted all requests before sleep")
+                except ImportError:
+                    logger.warning("Could not import RequestStatus, trying alternative abort")
+                    # Fallback: clear the lists directly (less clean but works)
+                    scheduler.running.clear()
+                    scheduler.waiting.clear() if hasattr(scheduler.waiting, 'clear') else None
+                    scheduler.requests.clear()
+                    logger.info("Cleared request queues directly before sleep")
+            else:
+                logger.info("No requests to abort before sleep")
+                
+            # Synchronize to ensure GPU operations complete
+            get_torch_device().synchronize()
+            
+        except Exception as e:
+            logger.warning(f"Failed to abort requests before sleep: {e}. Proceeding anyway.")
+            import traceback
+            traceback.print_exc()
 
     @GPUMemoryLogger(role="fsdp vllm sharding_manager", logger=logger)
     def preprocess_data(self, data: DataProto) -> DataProto:

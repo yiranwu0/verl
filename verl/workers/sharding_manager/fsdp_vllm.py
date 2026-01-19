@@ -259,7 +259,7 @@ class FSDPVLLMShardingManager(BaseShardingManager):
             # KV cache memory when sleep() calls CuMemAllocator.unmap_and_release() to free GPU memory.
             # By aborting all requests first, we ensure no requests are actively using the KV cache.
             self._abort_all_requests_before_sleep()
-            self.inference_engine.sleep(level=2)
+            self.inference_engine.sleep(level=1)
         
         # Aggressive memory cleanup to handle vLLM V1 CuMemAllocator
         print("MEMORY_DEBUG: After vLLM sleep in sharding manager exit")

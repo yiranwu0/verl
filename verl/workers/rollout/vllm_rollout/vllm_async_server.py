@@ -250,7 +250,11 @@ class AsyncvLLMServer(AsyncServerBase):
 
         API reference: https://platform.openai.com/docs/api-reference/completions/create
         """
-        request_json = await raw_request.json()
+        try:
+            request_json = await raw_request.json()
+        except Exception:
+            # Client disconnected before sending the full request body
+            return JSONResponse(content={"error": "client disconnected"}, status_code=499)
         request = CompletionRequest(**request_json)
         generator = await self.openai_serving_completion.create_completion(request, raw_request)
 

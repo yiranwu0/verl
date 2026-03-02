@@ -908,6 +908,7 @@ class RayPPOTrainer:
 
         # save dataloader
         dataloader_local_path = os.path.join(local_global_step_folder, "data.pt")
+        os.makedirs(local_global_step_folder, exist_ok=True)
         if prev_state_dict is not None:
             dataloader_state_dict = prev_state_dict
         else:

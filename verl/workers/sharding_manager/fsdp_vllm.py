@@ -21,7 +21,6 @@ from collections import OrderedDict
 from typing import List
 
 import torch
-from peft import PeftModel
 from torch.distributed.device_mesh import DeviceMesh
 
 from torch.distributed.fsdp.api import FullStateDictConfig, ShardedStateDictConfig, StateDictType
@@ -51,6 +50,14 @@ from .base import BaseShardingManager
 logger = logging.getLogger(__file__)
 # Use INFO level to ensure memory debug logs are visible
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "INFO"))
+
+
+def _get_peft_model_class():
+    try:
+        from peft import PeftModel
+        return PeftModel
+    except ImportError:
+        return None
 
 
 
@@ -177,7 +184,8 @@ class FSDPVLLMShardingManager(BaseShardingManager):
             load_fsdp_model_to_gpu(self.module)
 
         peft_config = None
-        if isinstance(self.module._fsdp_wrapped_module, PeftModel):
+        PeftModel = _get_peft_model_class()
+        if PeftModel is not None and isinstance(self.module._fsdp_wrapped_module, PeftModel):
             peft_config = self.module._fsdp_wrapped_module.peft_config.get('default', None)
             params = __collect_lora_params()
         else:

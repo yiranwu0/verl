@@ -30,7 +30,6 @@ from contextlib import nullcontext
 import hydra
 import torch
 import torch.distributed
-from peft import LoraConfig, TaskType, get_peft_model
 from tensordict import TensorDict
 from torch import nn, optim
 from torch.distributed.device_mesh import DeviceMesh, init_device_mesh
@@ -75,6 +74,17 @@ elif is_npu_available:
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_SFT_LOGGING_LEVEL", "WARN"))
+
+
+def _import_peft():
+    try:
+        from peft import LoraConfig, TaskType, get_peft_model
+    except ImportError as e:
+        raise ImportError(
+            "PEFT could not be imported. PEFT is only required when `model.lora_rank > 0`. "
+            "Either disable LoRA or install compatible `peft` / `transformers` versions."
+        ) from e
+    return LoraConfig, TaskType, get_peft_model
 
 
 def extract_step(path):
@@ -210,6 +220,7 @@ class FSDPSFTTrainer:
                 _apply_liger_kernel_to_instance(model=self.model)
 
             if self.config.model.get("lora_rank", 0) > 0:
+                LoraConfig, TaskType, get_peft_model = _import_peft()
                 self.model.enable_input_require_grads()
                 # Convert config to regular Python types before creating PEFT model
                 lora_config = {

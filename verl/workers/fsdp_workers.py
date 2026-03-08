@@ -69,12 +69,10 @@ from verl.workers.sharding_manager.fsdp_ulysses import FSDPUlyssesShardingManage
 from verl.utils.device import get_device_name, get_torch_device, is_cuda_available, is_npu_available
 
 
-from peft import LoraConfig, TaskType, get_peft_model
 from codetiming import Timer
 
 import torch.distributed as dist
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from peft import PeftModel
 from safetensors.torch import save_file
 from dataclasses import asdict
 import json
@@ -85,6 +83,25 @@ logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "INFO"))
 
 device_name = get_device_name()
+
+
+def _import_peft():
+    try:
+        from peft import LoraConfig, PeftModel, TaskType, get_peft_model
+    except ImportError as e:
+        raise ImportError(
+            "PEFT could not be imported. PEFT is only required when `model.lora_rank > 0`. "
+            "Either disable LoRA or install compatible `peft` / `transformers` versions."
+        ) from e
+    return LoraConfig, PeftModel, TaskType, get_peft_model
+
+
+def _get_peft_model_class():
+    try:
+        _, PeftModel, _, _ = _import_peft()
+        return PeftModel
+    except ImportError:
+        return None
 
 
 def create_device_mesh(world_size, fsdp_size):
@@ -198,7 +215,7 @@ class ActorRolloutRefWorker(Worker):
         from torch import optim
         from torch.distributed.fsdp import CPUOffload, MixedPrecision
         from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-        from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForVision2Seq
+        from transformers import AutoConfig, AutoModelForCausalLM
 
         from verl.utils.model import get_generation_config, print_model_size, update_model_config
         from verl.utils.torch_dtypes import PrecisionType
@@ -243,10 +260,7 @@ class ActorRolloutRefWorker(Worker):
 
         with init_context(), warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            if type(actor_model_config) in AutoModelForVision2Seq._model_mapping.keys():
-                actor_module_class = AutoModelForVision2Seq
-            else:
-                actor_module_class = AutoModelForCausalLM
+            actor_module_class = AutoModelForCausalLM
 
             actor_module = actor_module_class.from_pretrained(
                 pretrained_model_name_or_path=local_path,
@@ -274,6 +288,7 @@ class ActorRolloutRefWorker(Worker):
             if enable_gradient_checkpointing:
                 actor_module.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
             if self._is_lora:
+                LoraConfig, _, TaskType, get_peft_model = _import_peft()
                 print("Applying LoRA to actor module")
                 actor_module.enable_input_require_grads()
                 # Convert config to regular Python types before creating PEFT model
@@ -1113,7 +1128,8 @@ class ActorRolloutRefWorker(Worker):
         self.checkpoint_manager.save_checkpoint(local_path=local_path, hdfs_path=hdfs_path, global_step=global_step, max_ckpt_to_keep=max_ckpt_to_keep)
         dist.barrier()
 
-        if self._is_lora and isinstance(self.actor_module, PeftModel):
+        PeftModel = _get_peft_model_class() if self._is_lora else None
+        if self._is_lora and PeftModel is not None and isinstance(self.actor_module, PeftModel):
             lora_save_path = os.path.join(local_path, "lora_adapter")
             peft_config = {}
             if dist.get_rank() == 0:
@@ -1279,6 +1295,7 @@ class CriticWorker(Worker):
                 critic_module.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         
         if self._is_lora:
+            LoraConfig, _, TaskType, get_peft_model = _import_peft()
             print("Applying LoRA to critic module")
             critic_module.enable_input_require_grads()
             # Convert config to regular Python types before creating PEFT model

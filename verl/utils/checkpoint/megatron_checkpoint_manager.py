@@ -25,6 +25,7 @@ from transformers import GenerationConfig
 
 from verl.models.weight_loader_registry import get_weight_saver
 from verl.utils.fs import is_non_local
+from verl.utils.model import sanitize_generation_config_for_save
 from verl.utils.megatron_utils import (
     get_hf_config_and_tokenizer_checkpoint_path,
     get_hf_model_checkpoint_path,
@@ -252,7 +253,7 @@ class MegatronCheckpointManager(BaseCheckpointManager):
                 self.hf_config.save_pretrained(hf_config_and_tokenizer_path)
                 if hasattr(self.hf_config, "name_or_path") and self.hf_config.name_or_path:
                     try:
-                        generation_config = GenerationConfig.from_pretrained(self.hf_config.name_or_path)
+                        generation_config = sanitize_generation_config_for_save(GenerationConfig.from_pretrained(self.hf_config.name_or_path))
                         generation_config.save_pretrained(hf_config_and_tokenizer_path)
                     except Exception:
                         # if the generation config isn't available, we don't save it

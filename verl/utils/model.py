@@ -15,6 +15,7 @@
 Utilities to create common models from huggingface
 """
 
+import copy
 import os
 import warnings
 from typing import Dict, Optional, Type
@@ -84,6 +85,18 @@ def get_generation_config(
             return GenerationConfig.from_model_config(config)
         except OSError:  # Not found
             return None
+
+
+def sanitize_generation_config_for_save(generation_config: GenerationConfig) -> GenerationConfig:
+    sanitized_config = copy.deepcopy(generation_config)
+    default_config = GenerationConfig()
+
+    if getattr(sanitized_config, "do_sample", None) is False:
+        for attr_name in ("temperature", "top_p", "top_k", "min_p", "typical_p", "epsilon_cutoff", "eta_cutoff"):
+            if hasattr(sanitized_config, attr_name) and hasattr(default_config, attr_name):
+                setattr(sanitized_config, attr_name, getattr(default_config, attr_name))
+
+    return sanitized_config
 
 
 def create_huggingface_actor(model_name: str, override_config_kwargs=None, automodel_kwargs=None) -> nn.Module:

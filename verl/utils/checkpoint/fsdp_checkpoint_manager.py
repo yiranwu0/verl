@@ -27,6 +27,7 @@ from safetensors.torch import load_file
 from verl.utils.device import is_cuda_available
 from verl.utils.fs import copy_to_local, is_non_local
 from verl.utils.fsdp_utils import fsdp_version, get_fsdp_state_ctx
+from verl.utils.model import sanitize_generation_config_for_save
 
 from .checkpoint_manager import BaseCheckpointManager
 
@@ -203,7 +204,7 @@ class FSDPCheckpointManager(BaseCheckpointManager):
             if unwrap_model.can_generate() and hasattr(model_config, "name_or_path") and model_config.name_or_path:
                 # Some model's name_or_path is empty if not initialized from pretrained,
                 # in this cases, we don't save generation config.
-                generation_config = GenerationConfig.from_pretrained(model_config.name_or_path)
+                generation_config = sanitize_generation_config_for_save(GenerationConfig.from_pretrained(model_config.name_or_path))
                 generation_config.save_pretrained(local_path)
             else:
                 generation_config = None

@@ -93,7 +93,7 @@ def sanitize_generation_config_for_save(generation_config: GenerationConfig) -> 
 
     if getattr(sanitized_config, "do_sample", None) is False:
         for attr_name in ("temperature", "top_p", "top_k", "min_p", "typical_p", "epsilon_cutoff", "eta_cutoff"):
-            if hasattr(sanitized_config, attr_name) and hasattr(default_config, attr_name):
+            if hasattr(default_config, attr_name):
                 setattr(sanitized_config, attr_name, getattr(default_config, attr_name))
 
     return sanitized_config

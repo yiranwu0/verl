@@ -64,7 +64,7 @@ from verl.utils.fsdp_utils import (
     layered_summon_lora_params,
 )
 from verl.utils.import_utils import import_external_libs
-from verl.utils.model import compute_position_id_with_mask
+from verl.utils.model import compute_position_id_with_mask, sanitize_generation_config_for_save
 from verl.workers.sharding_manager.fsdp_ulysses import FSDPUlyssesShardingManager
 from verl.utils.device import get_device_name, get_torch_device, is_cuda_available, is_npu_available
 
@@ -1157,14 +1157,14 @@ class ActorRolloutRefWorker(Worker):
             if dist.get_rank() == 0:
                 full_checkpoint_local_path=f'{local_path}/checkpoint'
                 os.makedirs(full_checkpoint_local_path, exist_ok=True)
-                # Fix invalid generation config that prevents saving (e.g. temperature/top_p/top_k set with do_sample=False)
-                if hasattr(self.actor_module, 'generation_config'):
-                    gen_config = self.actor_module.generation_config
-                    if not getattr(gen_config, 'do_sample', False):
-                        for attr in ('temperature', 'top_p', 'top_k'):
-                            if hasattr(gen_config, attr) and getattr(gen_config, attr) is not None:
-                                delattr(gen_config, attr)
-                self.actor_module.save_pretrained(full_checkpoint_local_path, state_dict=state_dict)
+                original_generation_config = getattr(self.actor_module, 'generation_config', None)
+                if original_generation_config is not None:
+                    self.actor_module.generation_config = sanitize_generation_config_for_save(original_generation_config)
+                try:
+                    self.actor_module.save_pretrained(full_checkpoint_local_path, state_dict=state_dict)
+                finally:
+                    if original_generation_config is not None:
+                        self.actor_module.generation_config = original_generation_config
                 self.tokenizer.save_pretrained(full_checkpoint_local_path)
         
         dist.barrier()

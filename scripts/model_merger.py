@@ -68,6 +68,7 @@ except ImportError:
 from tqdm import tqdm
 
 from verl.utils import hf_processor, hf_tokenizer
+from verl.utils.model import sanitize_generation_config_for_save
 
 
 @dataclass
@@ -123,7 +124,7 @@ class BaseModelMerger(ABC):
         """
         if model.can_generate():
             try:
-                model.generation_config = GenerationConfig.from_pretrained(self.hf_model_config_path)
+                model.generation_config = sanitize_generation_config_for_save(GenerationConfig.from_pretrained(self.hf_model_config_path))
             except OSError:
                 print(f"Warning: Generation config file not found in {self.hf_model_config_path}, using a generation config created from the model config.")
         return model

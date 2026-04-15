@@ -57,6 +57,7 @@ from verl.utils.fsdp_utils import (
 )
 from verl.utils.torch_functional import get_cosine_schedule_with_warmup, get_wsd_schedule_with_warmup
 from verl.utils.py_functional import convert_to_regular_types
+from verl.utils.model import sanitize_generation_config_for_save
 from verl.utils.tracking import Tracking
 from verl.utils.ulysses import (
     gather_outpus_and_unpad,
@@ -74,6 +75,18 @@ elif is_npu_available:
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_SFT_LOGGING_LEVEL", "WARN"))
+
+
+def _save_pretrained_with_sanitized_generation_config(model: PreTrainedModel, path: str, state_dict: dict[str, torch.Tensor]):
+    original_generation_config = getattr(model, "generation_config", None)
+    if original_generation_config is not None:
+        model.generation_config = sanitize_generation_config_for_save(original_generation_config)
+
+    try:
+        model.save_pretrained(path, state_dict=state_dict)
+    finally:
+        if original_generation_config is not None:
+            model.generation_config = original_generation_config
 
 
 def _import_peft():
@@ -474,7 +487,7 @@ class FSDPSFTTrainer:
             # save huggingface model
             if self.device_mesh.get_rank() == 0:
                 os.makedirs(path, exist_ok=True)
-                self.model.save_pretrained(path, state_dict=state_dict)
+                _save_pretrained_with_sanitized_generation_config(self.model, path, state_dict)
                 self.tokenizer.save_pretrained(path)
         elif fsdp_strategy == "fsdp2":
             # FSDP2 checkpoint saving
@@ -487,7 +500,7 @@ class FSDPSFTTrainer:
             # save huggingface model
             if self.device_mesh.get_rank() == 0:
                 os.makedirs(path, exist_ok=True)
-                self.model.save_pretrained(path, state_dict=state_dict)
+                _save_pretrained_with_sanitized_generation_config(self.model, path, state_dict)
                 self.model_config.save_pretrained(path)
                 self.tokenizer.save_pretrained(path)
         else:
